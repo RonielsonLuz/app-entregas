@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Protocolo de Entrega Digital</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Biblioteca para escanear QR Code -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <!-- Biblioteca para captura de assinatura -->
+    <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
+    <style>
+        /* Estilos adicionais para o app */
+        body {
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .view { display: none; }
+        .view.active { display: block; }
+        #reader {
+            width: 100%;
+            border: 2px solid #e5e7eb;
+            border-radius: 0.5rem;
+        }
+        .signature-canvas {
+            border: 2px solid #e5e7eb;
+            border-radius: 0.5rem;
+            width: 100%;
+            height: 200px;
+            cursor: crosshair;
+        }
+        .protocol-item { cursor: pointer; }
+        .status-message {
+            transition: opacity 0.5s ease-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+
+    <div class="container mx-auto max-w-lg p-4 min-h-screen bg-white shadow-lg">
+
+        <!-- TELA 1: INICIAL -->
+        <div id="main-view" class="view active">
+            <header class="text-center mb-6">
+                <h1 class="text-2xl font-bold text-gray-800">Protocolo de Entrega Digital</h1>
+                <p class="text-gray-600">Escaneie um protocolo ou consulte os registros</p>
+            </header>
+
+            <div class="space-y-4">
+                <button id="goto-scanner-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-md hover:bg-green-700 transition duration-300">
+                    Escanear QR Codes
+                </button>
+                <button id="goto-consultas-btn" class="w-full bg-gray-600 text-white font-bold py-3 px-4 rounded-md hover:bg-gray-700 transition duration-300">
+                    Consultar Protocolos Salvos
+                </button>
+            </div>
+        </div>
+
+        <!-- TELA 2: SCANNER DE QR CODE (MÚLTIPLO) -->
+        <div id="scanner-view" class="view">
+            <header class="text-center mb-6">
+                <h1 class="text-2xl font-bold text-gray-800">Escanear QR Codes</h1>
+                <p class="text-gray-600">Escaneie um ou mais códigos em sequência.</p>
+            </header>
+            <div id="reader"></div>
+            <!-- Mensagem de status do scan -->
+            <div id="scan-status" class="text-center font-semibold p-2 my-2 rounded-md status-message opacity-0"></div>
+            <!-- Lista de itens escaneados -->
+            <div class="mt-4">
+                <h3 class="font-semibold text-gray-700">Itens Escaneados: <span id="scan-count">0</span></h3>
+                <div id="scanned-list" class="mt-2 space-y-1 max-h-32 overflow-y-auto bg-gray-50 p-2 rounded-md border">
+                    <p class="text-xs text-gray-500">Aguardando leitura...</p>
+                </div>
+            </div>
+            <button id="finish-scan-btn" class="mt-4 w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 transition duration-300 disabled:bg-gray-400" disabled>
+                Preencher Protocolos
+            </button>
+            <button class="back-to-main-btn mt-2 w-full bg-red-600 text-white font-bold py-2 px-4 rounded-md hover:bg-red-700 transition duration-300">
+                Cancelar e Voltar
+            </button>
+        </div>
+
+        <!-- TELA 3: FORMULÁRIO DE PROTOCOLOS (MÚLTIPLO) -->
+        <div id="protocol-view" class="view">
+            <header class="text-center mb-6">
+                <h1 class="text-2xl font-bold text-gray-800">Preencher Protocolos</h1>
+                <p class="text-gray-600">Preencha os dados para cada entrega abaixo.</p>
+            </header>
+            <div id="protocol-forms-container" class="space-y-8">
+                <!-- Formulários individuais serão inseridos aqui -->
+            </div>
+            <div class="mt-8 pt-4 border-t">
+                <button id="save-all-protocols-btn" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-md hover:bg-blue-700 text-lg">Salvar Todos os Protocolos</button>
+                <button class="back-to-main-btn mt-2 w-full text-center text-sm text-gray-600 hover:underline">Cancelar e Voltar</button>
+            </div>
+        </div>
+        
+        <!-- TELA 4: RESUMO DO PROTOCOLO -->
+        <div id="summary-view" class="view">
+             <header class="text-center mb-6">
+                <h1 id="summary-title" class="text-2xl font-bold text-green-600"></h1>
+                <p id="summary-subtitle" class="text-gray-600"></p>
+            </header>
+            <div class="space-y-4 bg-gray-50 p-4 rounded-lg border">
+                 <div id="summary-items-list" class="space-y-2 text-sm">
+                    <!-- Resumo dos itens será inserido aqui -->
+                </div>
+            </div>
+             <button id="summary-back-btn" class="mt-6 w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700">Voltar</button>
+        </div>
+
+        <!-- TELA 5: CONSULTA DE PROTOCOLOS -->
+        <div id="consultas-view" class="view">
+            <header class="text-center mb-6">
+                <h1 class="text-2xl font-bold text-gray-800">Consultar Protocolos</h1>
+                <p class="text-gray-600">Busque por entregas salvas</p>
+            </header>
+            <input type="text" id="search-input" class="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Buscar por pedido, NF ou recebedor...">
+            <div id="protocol-list" class="mt-4 space-y-2"></div>
+            <button class="back-to-main-btn mt-6 w-full text-center text-sm text-gray-600 hover:underline">Voltar ao Início</button>
+        </div>
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const views = {
+                main: document.getElementById('main-view'),
+                scanner: document.getElementById('scanner-view'),
+                protocol: document.getElementById('protocol-view'),
+                summary: document.getElementById('summary-view'),
+                consultas: document.getElementById('consultas-view'),
+            };
+
+            let db;
+            let html5QrCode;
+            let signaturePads = [];
+            let scannedItems = [];
+            let summaryReturnView = 'main';
+            let statusTimeout;
+
+            // --- BANCO DE DADOS (INDEXEDDB) ---
+            function initDB() {
+                const request = indexedDB.open('protocolosDB', 1);
+
+                request.onupgradeneeded = (event) => {
+                    const dbInstance = event.target.result;
+                    const store = dbInstance.createObjectStore('entregas', { keyPath: 'id', autoIncrement: true });
+                    store.createIndex('search_idx', ['pedido', 'nf', 'recebedor'], { unique: false });
+                };
+
+                request.onsuccess = (event) => {
+                    db = event.target.result;
+                    console.log('Banco de dados iniciado com sucesso.');
+                };
+
+                request.onerror = (event) => {
+                    console.error('Erro ao iniciar o banco de dados:', event.target.errorCode);
+                };
+            }
+
+            function saveProtocolToDB(protocol) {
+                return new Promise((resolve, reject) => {
+                    if (!db) reject('Banco de dados não está disponível.');
+                    const transaction = db.transaction(['entregas'], 'readwrite');
+                    const store = transaction.objectStore('entregas');
+                    const request = store.add(protocol);
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            }
+            
+            function getProtocolFromDB(id) {
+                 return new Promise((resolve, reject) => {
+                    if (!db) reject('Banco de dados não está disponível.');
+                    const transaction = db.transaction(['entregas'], 'readonly');
+                    const store = transaction.objectStore('entregas');
+                    const request = store.get(Number(id));
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            }
+
+            function searchProtocolsInDB(query) {
+                return new Promise((resolve, reject) => {
+                     if (!db) reject('Banco de dados não está disponível.');
+                    const transaction = db.transaction(['entregas'], 'readonly');
+                    const store = transaction.objectStore('entregas');
+                    const request = store.getAll();
+
+                    request.onsuccess = () => {
+                        const lowerCaseQuery = query.toLowerCase();
+                        const results = request.result.filter(p => {
+                            const isRecebedorMatch = p.recebedor.toLowerCase().includes(lowerCaseQuery);
+                            const isItemMatch = p.items && p.items.some(item => 
+                                item.pedido.toLowerCase().includes(lowerCaseQuery) || 
+                                item.nf.toLowerCase().includes(lowerCaseQuery)
+                            );
+                            return isRecebedorMatch || isItemMatch;
+                        }).sort((a,b) => b.id - a.id); // Mais recentes primeiro
+                        resolve(results);
+                    };
+                    request.onerror = () => reject(request.error);
+                });
+            }
+            
+            // --- NAVEGAÇÃO ---
+            function showView(viewName) {
+                Object.values(views).forEach(view => view.classList.remove('active'));
+                views[viewName].classList.add('active');
+            }
+
+            document.getElementById('goto-scanner-btn').addEventListener('click', () => {
+                scannedItems = []; // Limpa a lista para uma nova sessão de escaneamento
+                updateScannedListUI();
+                showView('scanner');
+                startScanner();
+            });
+
+            document.getElementById('goto-consultas-btn').addEventListener('click', async () => {
+                showView('consultas');
+                await displayProtocols();
+            });
+
+            document.querySelectorAll('.back-to-main-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if (html5QrCode && html5QrCode.isScanning) stopScanner();
+                    showView('main');
+                });
+            });
+
+            // --- SCANNER ---
+             function showScanStatus(message, type = 'success') {
+                const statusEl = document.getElementById('scan-status');
+                statusEl.textContent = message;
+
+                statusEl.classList.remove('bg-green-100', 'text-green-800', 'bg-yellow-100', 'text-yellow-800', 'bg-red-100', 'text-red-800');
+                
+                if (type === 'success') {
+                    statusEl.classList.add('bg-green-100', 'text-green-800');
+                } else if (type === 'warning') {
+                     statusEl.classList.add('bg-yellow-100', 'text-yellow-800');
+                } else { // error
+                     statusEl.classList.add('bg-red-100', 'text-red-800');
+                }
+
+                statusEl.style.opacity = '1';
+                if (statusTimeout) clearTimeout(statusTimeout);
+                statusTimeout = setTimeout(() => {
+                    statusEl.style.opacity = '0';
+                }, 2000);
+            }
+
+            function handleScanSuccess(decodedText) {
+                try {
+                    const data = JSON.parse(decodedText);
+
+                    if (data && typeof data === 'object' && data.pedido && data.nf) {
+                        const isDuplicate = scannedItems.some(item => item.pedido === data.pedido && item.nf === data.nf);
+                        if (isDuplicate) {
+                           showScanStatus('Item já escaneado!', 'warning');
+                        } else {
+                            scannedItems.push(data);
+                            updateScannedListUI();
+                            showScanStatus('Item Adicionado!', 'success');
+                            if (navigator.vibrate) navigator.vibrate(100);
+                        }
+                    } else {
+                       showScanStatus('QR Code Inválido', 'error');
+                    }
+                } catch (e) {
+                   showScanStatus('QR Code Inválido', 'error');
+                }
+            }
+
+            function updateScannedListUI() {
+                const listContainer = document.getElementById('scanned-list');
+                const countEl = document.getElementById('scan-count');
+                const finishBtn = document.getElementById('finish-scan-btn');
+
+                countEl.textContent = scannedItems.length;
+
+                if (scannedItems.length === 0) {
+                    listContainer.innerHTML = '<p class="text-xs text-gray-500">Aguardando leitura...</p>';
+                    finishBtn.disabled = true;
+                } else {
+                    listContainer.innerHTML = '';
+                    scannedItems.forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = 'text-xs p-1 bg-white rounded border';
+                        div.textContent = `Pedido: ${item.pedido}, NF: ${item.nf}`;
+                        listContainer.appendChild(div);
+                    });
+                    finishBtn.disabled = false;
+                }
+            }
+            
+            function startScanner() {
+                html5QrCode = new Html5Qrcode("reader");
+                const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+                
+                html5QrCode.start({ facingMode: "environment" }, config, handleScanSuccess)
+                .catch(err => {
+                    alert("Não foi possível acessar a câmera. Verifique as permissões.");
+                    showView('main');
+                });
+            }
+
+            function stopScanner() {
+                if (html5QrCode && html5QrCode.isScanning) {
+                    html5QrCode.stop().catch(err => console.error("Erro ao parar scanner.", err));
+                }
+            }
+
+            document.getElementById('finish-scan-btn').addEventListener('click', () => {
+                if (scannedItems.length === 0) return;
+                stopScanner();
+                showView('protocol');
+                // Adicionado um pequeno delay para garantir que a view esteja visível antes de inicializar os pads
+                setTimeout(populateMultiProtocolForms, 50);
+            });
+
+            // --- PROTOCOLO (MÚLTIPLO) ---
+            function populateMultiProtocolForms() {
+                const container = document.getElementById('protocol-forms-container');
+                container.innerHTML = '';
+                signaturePads = []; // Resetar a lista de pads
+
+                scannedItems.forEach((item, index) => {
+                    const formHtml = `
+                        <div class="protocol-form-card border p-4 rounded-lg shadow-sm" data-index="${index}">
+                            <div class="space-y-1 text-sm bg-gray-50 p-3 rounded-md border mb-4">
+                                <p><strong>Pedido:</strong> ${item.pedido} / <strong>NF:</strong> ${item.nf}</p>
+                            </div>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Foto do Recebedor</label>
+                                    <button class="take-photo-btn mt-1 w-full bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-md hover:bg-gray-300">Tirar Foto</button>
+                                    <input type="file" class="photo-input hidden" accept="image/*" capture="user">
+                                    <img class="photo-preview mt-2 rounded-md hidden max-w-full h-auto">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Nome do Recebedor</label>
+                                    <input type="text" class="receiver-name mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm" placeholder="Nome completo de quem recebeu">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Assinatura</label>
+                                    <canvas class="signature-canvas"></canvas>
+                                    <button class="clear-signature-btn mt-1 text-sm text-blue-600 hover:underline">Limpar</button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    container.insertAdjacentHTML('beforeend', formHtml);
+                });
+
+                // Anexar eventos e inicializar signature pads DEPOIS que o HTML foi adicionado
+                document.querySelectorAll('.protocol-form-card').forEach((card, index) => {
+                    const canvas = card.querySelector('.signature-canvas');
+                    
+                    // Redimensionamento do canvas
+                    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+                    canvas.width = canvas.offsetWidth * ratio;
+                    canvas.height = canvas.offsetHeight * ratio;
+                    canvas.getContext("2d").scale(ratio, ratio);
+                    
+                    const pad = new SignaturePad(canvas, { backgroundColor: 'rgb(255, 255, 255)' });
+                    signaturePads.push(pad);
+
+                    card.querySelector('.clear-signature-btn').addEventListener('click', () => pad.clear());
+                    
+                    const photoInput = card.querySelector('.photo-input');
+                    card.querySelector('.take-photo-btn').addEventListener('click', () => photoInput.click());
+                    photoInput.addEventListener('change', (event) => {
+                        if (event.target.files && event.target.files[0]) {
+                            const reader = new FileReader();
+                            const preview = card.querySelector('.photo-preview');
+                            reader.onload = (e) => {
+                                preview.src = e.target.result;
+                                preview.classList.remove('hidden');
+                            };
+                            reader.readAsDataURL(event.target.files[0]);
+                        }
+                    });
+                });
+            }
+
+            document.getElementById('save-all-protocols-btn').addEventListener('click', async () => {
+                const forms = document.querySelectorAll('.protocol-form-card');
+                const protocolsToSave = [];
+                let allFormsValid = true;
+
+                forms.forEach((card, index) => {
+                    const name = card.querySelector('.receiver-name').value.trim();
+                    const photoSrc = card.querySelector('.photo-preview').src;
+                    const signaturePad = signaturePads[index];
+
+                    if (!name || !photoSrc || signaturePad.isEmpty()) {
+                        allFormsValid = false;
+                        card.style.borderColor = 'red';
+                    } else {
+                         card.style.borderColor = '';
+                    }
+
+                    protocolsToSave.push({
+                        items: [scannedItems[index]], // Salva cada um com seu respectivo item
+                        recebedor: name,
+                        foto: photoSrc,
+                        assinatura: signaturePad.toDataURL()
+                    });
+                });
+
+                if (!allFormsValid) {
+                    return alert('Todos os campos de todos os protocolos são obrigatórios. Verifique os cartões marcados em vermelho.');
+                }
+                
+                try {
+                    const savePromises = protocolsToSave.map(p => saveProtocolToDB(p));
+                    await Promise.all(savePromises);
+                    
+                    // Mostra mensagem de sucesso e retorna para a tela inicial
+                    document.getElementById('summary-title').textContent = `${protocolsToSave.length} Protocolo(s) Salvo(s)!`;
+                    document.getElementById('summary-subtitle').textContent = 'Retornando à tela inicial...';
+                    document.getElementById('summary-items-list').innerHTML = '';
+                    const summaryBackButton = document.getElementById('summary-back-btn');
+                    summaryBackButton.style.display = 'none';
+                    
+                    showView('summary');
+
+                    setTimeout(() => {
+                        summaryBackButton.style.display = 'block';
+                        showView('main');
+                    }, 2000); // Aguarda 2 segundos
+
+                } catch (error) {
+                    console.error('Erro ao salvar protocolos:', error);
+                    alert('Não foi possível salvar os protocolos.');
+                }
+            });
+
+
+            // --- RESUMO (usado apenas pela tela de Consulta agora) ---
+            function populateDetailedSummaryView(protocol) {
+                const summaryContainer = document.getElementById('summary-items-list');
+                summaryContainer.innerHTML = `
+                    <h4 class="font-semibold text-gray-800">Item Entregue:</h4>
+                    <p>Pedido: ${protocol.items[0].pedido} / NF: ${protocol.items[0].nf}</p>
+                    <h3 class="font-semibold text-gray-800 border-t pt-2 mt-2">Recebido por: <span class="font-normal text-gray-600">${protocol.recebedor}</span></h3>
+                    <div>
+                        <h4 class="font-semibold text-gray-800">Foto do Recebedor:</h4>
+                        <img src="${protocol.foto}" class="mt-2 rounded-md border max-w-full h-auto">
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-800">Assinatura:</h4>
+                        <img src="${protocol.assinatura}" class="mt-2 rounded-md border bg-white max-w-full h-auto">
+                    </div>
+                `;
+                document.getElementById('summary-title').textContent = 'Detalhes do Protocolo';
+                document.getElementById('summary-subtitle').textContent = 'Resumo da entrega salva.';
+                summaryReturnView = 'consultas';
+                showView('summary');
+            }
+            
+            document.getElementById('summary-back-btn').addEventListener('click', () => {
+                showView(summaryReturnView === 'consultas' ? 'consultas' : 'main');
+            });
+
+            // --- CONSULTAS ---
+            async function displayProtocols(query = '') {
+                const listContainer = document.getElementById('protocol-list');
+                listContainer.innerHTML = '<p class="text-gray-500">Carregando...</p>';
+                try {
+                    const protocols = await searchProtocolsInDB(query);
+                    listContainer.innerHTML = '';
+                    if (protocols.length === 0) {
+                        listContainer.innerHTML = '<p class="text-gray-500">Nenhum protocolo encontrado.</p>';
+                    } else {
+                        protocols.forEach(p => {
+                            const item = document.createElement('div');
+                            item.className = 'protocol-item p-3 border rounded-md hover:bg-gray-50';
+                            item.dataset.id = p.id;
+
+                            const firstItem = p.items && p.items.length > 0 ? p.items[0] : { pedido: 'N/A', nf: 'N/A' };
+                            
+                            item.innerHTML = `
+                                <p class="font-bold">Pedido: ${firstItem.pedido}</p>
+                                <p class="text-sm text-gray-700">NF: ${firstItem.nf}</p>
+                                <p class="text-sm text-gray-600 mt-1">Recebido por: ${p.recebedor}</p>
+                            `;
+                            item.addEventListener('click', async () => {
+                                const protocolDetails = await getProtocolFromDB(p.id);
+                                if(protocolDetails) {
+                                   populateDetailedSummaryView(protocolDetails);
+                                }
+                            });
+                            listContainer.appendChild(item);
+                        });
+                    }
+                } catch (error) {
+                    listContainer.innerHTML = '<p class="text-red-500">Erro ao carregar protocolos.</p>';
+                }
+            }
+
+            document.getElementById('search-input').addEventListener('keyup', (e) => {
+                displayProtocols(e.target.value);
+            });
+            
+            // --- INICIALIZAÇÃO ---
+            initDB();
+            showView('main');
+        });
+    </script>
+</body>
+</html>
+
